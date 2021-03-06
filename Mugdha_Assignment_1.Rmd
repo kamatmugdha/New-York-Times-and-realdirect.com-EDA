@@ -1,0 +1,390 @@
+---
+title: "FE582_Assignment_1"
+author: "Mugdha Kamat"
+date: "9/21/2020"
+output: pdf_document
+---
+
+## Problem 1
+Explore realdirect.com thinking about how buyers and sellers would navigate, and how the
+website is organized. Use the datasets provided for Bronx, Brooklyn, Manhattan, Queens, and
+Staten Island. 
+
+## Load in and clean the data.
+
+**\textcolor{red}{Solution:}**  
+
+```{r}
+#getwd()
+#setwd()
+Sys.setenv(JAVA_HOME='C:\\Program Files\\Java\\jre1.8.0_171')
+library('plyr')
+library('gdata')
+library('ggplot2')
+library('xlsx')
+alldatasets<- c("bronx","brooklyn","manhattan","queens","statenisland")
+
+for (alldatasets in alldatasets){
+  df=read.xls(paste("rollingsales_",alldatasets,".xls",sep=""),perl = "C:\\Strawberry\\perl\\bin\\perl.exe", pattern="BOROUGH")
+  names(df)=tolower(names(df))
+  
+  #Data cleaning with regular expressions
+  df$sale.price.n <-as.numeric(gsub("[^[:digit:]]","",df$sale.price))
+  df$gross.sqft <- as.numeric(gsub("[^[:digit:]]","",df$gross.square.feet))
+  df$land.sqft<- as.numeric(gsub("[^[:digit:]]","",df$land.square.feet))
+  
+  df$borough <- as.character(df$borough)
+  
+  df$sale.date <- as.Date(df$sale.date)
+  
+  df$year.built = as.numeric(as.character(df$year.built))
+  if (alldatasets=="bronx"){ bx=df }
+  else if (alldatasets=="brooklyn"){bk=df}
+  else if (alldatasets=="manhattan"){mh=df}
+  else if (alldatasets=="queens"){qn=df}
+  else {si=df}
+}
+```
+### **Combining all the boroughs data in one Dataframe.**
+```{r}
+allboroughs= rbind(bx,bk,mh,qn,si)
+summary(allboroughs)
+str(allboroughs)
+```
+**\textcolor{red}{Conclusion}**  
+**From the summary, we can observe the minimum and maximum values for sales price,gross square feet year built,number of units and so on.str() function gives us an overview about the structure of the data.Here we can check the class and mode of all the columns and factorize certain columns for better analysis.**
+
+## Conduct exploratory data analysis in order to find out where there are outliers or missing values, decide how you will treat them, make sure the dates are formatted correctly, make sure values you think are numerical are being treated as such, etc.
+
+**\textcolor{red}{Solution:}** 
+
+```{r}
+par("mar")
+par(mar=c(5,5,5,5))
+#checking if the data for all boroughs is correct
+hist(main = "Histogram of Allbroughs Saleprice",allboroughs$sale.price.n)
+```
+**\textcolor{red}{Conclusion}**  
+**Here we observe that the range of the Sale prices is large, most of them being close to 0.Hence, for better analysis let's keep only the actual sales.**
+
+```{r}
+allboroughs.sale = allboroughs[allboroughs$sale.price.n!=0,]
+plot(allboroughs.sale$gross.sqft,allboroughs.sale$sale.price.n, title(main="Allboroughs Gross sqft vs Sale price"))
+
+plot(log(allboroughs.sale$gross.sqft),log(allboroughs.sale$sale.price.n),title(main="Allboroughs Gross sqft vs Sale price"))
+
+```
+**Taking log on both variables as most of the values were concentrated around 0.After taking log, the plot is much better for analysis. But there is noise at some values.**
+
+**For now,considering only family homes, coops, and condos from the building category.**
+
+```{r}
+allboroughs.homes = allboroughs.sale [which(grepl("FAMILY | CONDOS | COOPS",
+                                              allboroughs.sale$building.class.category)),]
+#checking the building class category
+unique(allboroughs.homes$building.class.category)
+
+plot(log(allboroughs.homes$gross.sqft),log(allboroughs.homes$sale.price.n),title(main="Allboroughs Gross sqft vs Sale price"))
+#labeling the boroughs
+allboroughs.homes$borough <- factor(allboroughs.homes$borough,labels = c("Manhattan","Bronx","Brooklyn","Queens","Staten Island"))
+```
+**\textcolor{red}{Conclusion}**  
+**Much less noise appears now in the plot.**
+
+```{r}
+library("ggplot2")
+ggplot(allboroughs.homes, aes(x=borough, fill=borough))+geom_bar(colour="black")+
+  ggtitle("Actual sales of Family home, Condos, and Coops for all boroughs")
+```
+
+**\textcolor{red}{Conclusion}**  
+**Here, we observe that Manhattan, followed by Queens has the highest actual sales of Family home, Condos, and Coops and Bronx has the lowest sales.**
+
+```{r}
+ggplot(subset(allboroughs.homes, gross.sqft>0), aes(x=log(gross.sqft),colour=borough))+geom_density()+
+  ggtitle("Gross sqft for all boroughs")
+```
+
+```{r}
+
+ggplot(allboroughs.homes, aes(x=borough,y=log(sale.price.n),fill=borough))+geom_point()+geom_boxplot()+
+  ggtitle("Sale price for all boroughs")
+
+```
+**\textcolor{red}{Conclusion}**  
+**We observe that Manhattan has the highest actual sale price among all boroughs.Manhattan also has the highest mean and high kurtosis.The actual sale price of other boroughs have similar distributions.Now removing all the outliers as they have extreme values.**
+
+```{r,echo=FALSE,message=FALSE, results=FALSE}
+#Removing outliers
+allboroughs.homes[which(allboroughs.homes$sale.price.n<100000),][order(allboroughs.homes[which(allboroughs.homes$sale.price.n<100000),]$sale.price.n),]
+
+allboroughs.homes$outliers <- (log(allboroughs.homes$sale.price.n) <= 5) + 0
+allboroughs.homesnooutliers <- allboroughs.homes[which(allboroughs.homes$outlier==0 & allboroughs.homes$gross.sqft>0),]
+
+
+```
+
+```{r}
+summary(allboroughs.homesnooutliers)
+ggplot(allboroughs.homesnooutliers, aes(x=borough, fill=borough))+geom_bar(colour="black")+
+  ggtitle("Actual sales of Family home, Condos, and Coops for all boroughs without Outliers")
+
+```
+**\textcolor{red}{Conclusion}**  
+**After removing outliers,we observe that Manhattan has now the lowest actual sales across the building category and Queens has the highest actual sales now.**
+
+```{r}
+ggplot(subset(allboroughs.homesnooutliers, gross.sqft>0), aes(x=log(gross.sqft),colour=borough))+geom_density()+
+  ggtitle("Gross sqft for all boroughs without Outliers")
+
+
+ggplot(allboroughs.homesnooutliers, aes(x=borough,y=log(sale.price.n),fill=borough))+geom_point()+geom_boxplot()+
+  ggtitle("Sale price for all boroughs without Outliers")
+```
+**\textcolor{red}{Conclusion}**  
+**The boxplot for Manhattan shows that it has the highest sale price for all quartiles as well as its median is high.**
+
+
+```{r}
+plot(log(allboroughs.homesnooutliers$gross.sqft),log(allboroughs.homesnooutliers$sale.price.n),title(main="Allboroughs Gross sqft vs Sale price without Outliers"))
+```
+## Conduct exploratory data analysis to visualize and make comparisons for residential building category classes across boroughs and across time
+
+```{r}
+summary(allboroughs.homes$year.built)
+```
+**Now, categorizing the Year built to visualize the data across time**
+```{r}
+# For years >0 
+allboroughs.homes<- allboroughs.homes[allboroughs.homes$year.built!=0,]
+summary(allboroughs.homes$year.built)
+
+allboroughs.homes$yearscat <- cut(allboroughs.homes$year.built,c(0,1850,1900,1950,2000,Inf),labels <-c("<1800","1850-1899","1900-1949","1950-1999","2000>"))
+#allboroughs.homes$yearscat
+```
+**\textcolor{red}{Conclusion}**  
+**Here,after categorizing, now we can analyze the relationship between sale price and year built.**
+
+```{r}
+means <- with(allboroughs.homes,aggregate(x=list(Y=sale.price.n),by=list(A=yearscat, B=borough),mean))
+with(means,interaction.plot(x.factor=A, trace.factor=B, response=Y, type='l',col=B,main ="Average of sale prices by boroughs",xlab = "Year built",ylab = "Average sale price"))
+```
+**\textcolor{red}{Conclusion}**  
+**Here,we observe that the average sale price for all the years in which buildings were built is similar for all the boroughs except Manhattan. For Manhattan, the sale price for the buildings built in years 1850 to 1859 is highest and trend continued with some increase from 2000.**
+```{r}
+allboroughs.homes$newbuildingcat = allboroughs.homes$building.class.category
+tt = as.vector(allboroughs.homes$newbuildingcat)
+tt[grep("COOPS", tt)] = "COOPS"
+tt[grep("CONDOS",tt)] = "CONDOS"
+tt[grep("ONE FAMILY",tt)] = "ONE"
+tt[grep("TWO FAMILY",tt)] = "TWO"
+tt[grep("THREE FAMILY",tt)] = "THREE"
+allboroughs.homes$newbuildingcat = tt
+homes =with(allboroughs.homes,aggregate(x=list(Y=sale.price.n),by=list(A=newbuildingcat, B=borough),mean))
+with(homes,interaction.plot(x.factor=A, trace.factor=B, response=Y, type='l',
+main ="Average of sale prices by buliding class category",xlab = "Building class",ylab = "Average sale price"))
+```
+**\textcolor{red}{Conclusion}**  
+**In this plot too we observe that the trend for Manhattan is different than others.The average sale price in for One Family Homes is highest in Manhattan.**
+```{r,fig.width=7}
+par("mar")
+par(mar=c(6,6,6,6))
+ggplot(allboroughs.homes , aes(x=borough, fill=building.class.category))+ geom_bar(colour="black")
+
+ggplot(allboroughs.homes , aes(x=yearscat, fill=borough))+ geom_bar(colour="black")
+
+ggplot(allboroughs.homes , aes(x=yearscat, fill=building.class.category))+ geom_bar(colour="black")
+```
+**\textcolor{red}{Conclusion}**  
+**We can observe the distribution of the boroughs, years built and building class category acorss the years built.Highest number of boroughs are built in the period 1900-1950.**
+
+
+## Problem 2
+The datasets provided nyt1.csv, nyt2.csv, and nyt3.csv represents three (simulated) days of ads shown and clicks recorded on the New York Times homepage. Each row represents a single user. There are 5 columns: age, gender (0=female, 1=male), number impressions, number clicks, and logged-in. Use R to handle this data. Perform some exploratory data analysis:  
+
+## Create a new variable, age_group, that categorizes users as “<20”, “20-29”,“30-39”, “40-49”, “50-59”, “60-69”, and “70+”
+
+**\textcolor{red}{Solution:}**  
+
+**Loading and Cleaning the data**
+
+```{r}
+#getwd()
+#setwd()
+nyt<-c('nyt1','nyt2','nyt3')
+for (nyt in nyt){
+  
+  data=read.csv(paste(nyt,".csv",sep=""))
+  
+  #categorization of Age  and Signed_In/Not
+  data$age_group <- cut(data$Age, c(-Inf,20,29,39,49,59,69,Inf))
+  levels(data$age_group)<-c("<20","20-29","30-39","40-49","50-59","60-69","70+")
+  data$Signed_In<- factor(data$Signed_In)
+  
+  if (nyt=="nyt1"){ data1=data }
+  else if (nyt=="nyt2"){data2=data}
+  else {data3=data}
+}
+```
+```{r}
+head(data1)
+summary(data1)
+```
+**\textcolor{red}{Conclusion}**  
+**Categorizing users based on Gender:**
+**We know that the observations for a person who is  not Signed_In are 0 for both Gender and Age group, making it impossible to know the Gender.Hence adding one more category as Unknown along with Male and Female for all observations where the user is not signed in.**
+
+```{r}
+data1$Gender_code[data1$Gender==0]<-"Female"
+data1$Gender_code[data1$Gender>0]<-"Male"
+data1$Gender_code[data1$Signed_In==0]<-"Unknown"
+data1$Gender_code<- factor(data1$Gender_code)
+
+data2$Gender_code[data2$Gender==0]<-"Female"
+data2$Gender_code[data2$Gender>0]<-"Male"
+data2$Gender_code[data2$Signed_In==0]<-"Unknown"
+data2$Gender_code<- factor(data2$Gender_code)
+
+data3$Gender_code[data3$Gender==0]<-"Female"
+data3$Gender_code[data3$Gender>0]<-"Male"
+data3$Gender_code[data3$Signed_In==0]<-"Unknown"
+data3$Gender_code<- factor(data3$Gender_code)
+
+summary(data1)
+head(data3)
+```
+**\textcolor{red}{Conclusion}**  
+**We can observe that the data is more understandable now that we have categorized users based on Gender.**
+
+## Define a new variable to segment or categorize users based on their click behavior 
+
+**Categorizing Users who produced an Impression/Click**
+
+```{r}
+
+data1$scode[data1$Impressions==0] <- "NoImps"
+data1$scode[data1$Impressions >0] <- "Imps"
+data1$scode[data1$Clicks >0] <- "Clicks"
+
+data2$scode[data2$Impressions==0] <- "NoImps"
+data2$scode[data2$Impressions >0] <- "Imps"
+data2$scode[data2$Clicks >0] <- "Clicks"
+
+data3$scode[data3$Impressions==0] <- "NoImps"
+data3$scode[data3$Impressions >0] <- "Imps"
+data3$scode[data3$Clicks >0] <- "Clicks"
+
+data1$scode <- factor(data1$scode)
+data2$scode <- factor(data2$scode)
+data3$scode <- factor(data3$scode)
+
+head(data3)
+
+
+```
+
+## For each day, Plot the distribution of number of impressions and click-through-rate (CTR =clicks/impressions) for these age categories
+```{r}
+library(ggplot2)
+ggplot(subset(data1, Impressions>0), aes(x=Impressions,fill=age_group))+
+  geom_histogram(position="dodge",binwidth=1,colour="Black")+
+  labs(title = "Day 1 :Impressions Distribution") +  facet_grid(age_group ~ .)
+
+ggplot(subset(data2, Impressions>0), aes(x=Impressions,fill=age_group))+
+  geom_histogram(position="dodge",binwidth=1,colour="Black")+
+  labs(title = "Day 2 :Impressions Distribution") +  facet_grid(age_group ~ .)
+
+ggplot(subset(data3, Impressions>0), aes(x=Impressions,fill=age_group))+
+  geom_histogram(position="dodge",binwidth=1,colour="Black")+
+  labs(title = "Day 3 :Impressions Distribution") +  facet_grid(age_group ~ .)
+```
+## Explore the data and make visual and quantitative comparisons across user segments/demographics
+**\textcolor{red}{Conclusion}**  
+**We can conclude that there is Normal Distribution of Impressions for all 3 days and the age group <20 have the maximum Impressions.Also,age group 70+ (senior citizens) have the least Impressions.**
+
+```{r}
+#Plotting the distribution of number of Clicks
+ggplot(subset(data1, Clicks>0), aes(x=Clicks,fill=age_group))+
+  geom_histogram(position="dodge",binwidth=1,colour="Black")+
+  labs(title = "Day 1: Clicks Distribution")
+
+ggplot(subset(data2, Clicks>0), aes(x=Clicks,fill=age_group))+
+  geom_histogram(position="dodge",binwidth=1,colour="Black")+
+  labs(title = "Day 2:Clicks Distribution") 
+
+ggplot(subset(data3, Clicks>0), aes(x=Clicks,fill=age_group))+
+  geom_histogram(position="dodge",binwidth=1,colour="Black")+
+  labs(title = "Day 3:Clicks Distribution") 
+
+```
+**\textcolor{red}{Conclusion}**  
+**We can conclude that maximum Clicks are from age group <20 for all 3 days.As we have seen earlier that this age group had the most impressions as well,and hence they have clicked most on the ads than the other age groups.**
+
+```{r}
+#plotting CTR
+
+ggplot(subset(data1, Clicks>0 ), aes(x=Clicks/Impressions,colour=age_group))+
+  geom_density() + labs(title = "Day 1: CTR Distribution")
+
+ggplot(subset(data2, Clicks>0 & Impressions>0), aes(x=Clicks/Impressions,colour=age_group))+
+  geom_density() + labs(title = "Day 2: CTR Distribution")  +facet_grid(age_group ~ .)
+
+ggplot(subset(data3, Clicks>0 & Impressions>0), aes(x=Clicks/Impressions,colour=age_group))+
+  geom_density() +  labs(title = "Day 3: CTR Distribution")+ facet_grid(age_group ~ .)
+```
+**\textcolor{red}{Conclusion}**  
+**The distribution is right skewed. Also,it is evident from the plot that the maximum CTR is 0.25 and hence few people click on any Impressions popping on the Website.**
+
+## Extend your analysis across days. Visualize some metrics and distributions over time
+
+**Combining three data sets into one data frame**
+```{r}
+data1$Day = 1
+data2$Day = 2
+data3$Day = 3
+
+alldata<- rbind(data1,data2,data3)
+
+alldata$Day <- factor(alldata$Day,labels=c("Day1","Day2","Day3"))
+summary(alldata)
+```
+
+**Now, we have combined data of 3 days so that we can visualize across time.**
+
+```{r}
+ggplot(subset(alldata,Clicks>0 & Impressions>0),aes(x=Clicks/Impressions, fill=Gender_code))+
+  geom_bar()+  facet_grid(Day~Gender_code)
+
+par("mar")
+par(mar=c(6.5,6,4,1), mgp=c(5,1,0))
+ggplot(subset(alldata, Clicks>0),aes(x=age_group, fill=Gender_code))+
+  geom_bar(colour="Black") +facet_grid(Day~.)
+```
+**\textcolor{red}{Conclusion}**  
+**Here we observe that more number of males have  clicked on the ads than females for the first 2 days.Also there are a lot of users in the Unknown category across days as they haven't signed in but clicked on the ads.**
+
+**Also, if we compare across the age categories,more males in the age group <20 have clicks and are signed in for all days. But in the age category, 70 +,more females have signed in and clicked the ads than males.**
+
+**For the rest age categories, the count is almost same for both male and female.**
+
+**So the ads should be targeted such that it caters to the above the missing age groups and Gender accordingly.**
+
+```{r}
+dayImp = aggregate(alldata$Impressions, by=list(Day=alldata$Day),sum)
+dayclk = aggregate(alldata$Clicks, by=list(Day=alldata$Day),sum)
+
+dayImp
+dayclk
+par("mar")
+#par(mar=c(5,5,5,5))
+par(mar=c(6.5,6,4,1), mgp=c(5,1,0))
+
+plot(dayImp, main="Trend of Days vs Impressions",xlab(""),ylab("Impressions"))
+plot(dayclk ,main="Trend of Days vs Clicks",xlab(""),ylab("Clicks"))
+
+summary(alldata$Impressions)
+summary(alldata$Clicks)
+
+```
+**\textcolor{red}{Conclusion}**  
+**Here,we can observe from the above statistics that the number of impressions and clicks have reduced from Day 1 to Day3, Day 3 being the lowest.So the quality and relevance of the ads for each age group and Gender category should be modified accordingly. **
